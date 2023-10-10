@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: UrSilafication
+Version: 0.0.0
+Requires-Python: >=3.7
+Requires-Dist: sila2
+Requires-Dist: typer

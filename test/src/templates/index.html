@@ -1,0 +1,294 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ur Client</title>
+    <style>
+        .state {
+            padding: 20px;
+            border: 2px solid #000;
+            margin: 10px;
+            display: inline-block;
+        }
+        .second-state {
+            padding: 20px;
+            border: 2px solid #f00; /* Roter Rahmen für die zweite Zustandsmaschine */
+            margin: 10px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ur Client</h1>
+    <button id="connectButton">Connect to Server Simulator</button>
+    <br><br>
+    <button id="disconnectButton" disabled>Disconnect</button>
+    <br><br>
+    <input type="text" id="commandInput" placeholder="Enter command" disabled>
+    <button id="sendCommandButton" disabled>Send Command</button>
+    <br><br>
+    <button id="statusButton" disabled>Status</button>
+    <button id="loadButton" disabled>Load</button>
+    <button id="unloadButton" disabled>Unload</button>
+    <button id="infoButton" disabled>Info</button>
+    <br><br>
+    <textarea id="outputArea" rows="10" cols="50" readonly></textarea>
+
+    <!-- Zustandsanzeige -->
+    <div id="stateDisplay">
+        <h2>Host Internal State</h2>
+        <div class="state" id="S01">S01 (SConnecting)</div>
+        <div class="state" id="S10">S10 (SWaiting4Order)</div>
+        <div class="state" id="S11">S14 (SErrorHandling)</div>
+        <div class="state" id="S12">S11 (SSendingCommand)</div>
+        <div class="state" id="S13">S12 (SWaiting4Response)</div>
+        <div class="state" id="S14">S13 (SAnalysingResponse)</div>
+        <div class="state" id="S15">S15 (SWaiting4OrderDone)</div>
+        <div class="state" id="S02">S02 (SDisconnecting)</div>
+    </div>
+    <!-- Zustandsanzeige für die zweite Zustandsmaschine -->
+    <div id="stateDisplay2" class="machine-container">
+        <h2>SecNode Storage States</h2>
+        <div class="state" id="DISABLED">DISABLED (0)</div>
+        <div class="state" id="IDLE">IDLE (100)</div>
+        <!--div class="state" id="HOLDING_SAMPLE">HOLDING_SAMPLE (101)</div>-->
+        <div class="state" id="WARN">WARN (200)</div>
+        <div class="state" id="BUSY">BUSY (300)</div>
+        <div class="state" id="LOADING">LOADING (303)</div>
+        <div class="state" id="UNLOADING">UNLOADING (304)</div>
+        <div class="state" id="PAUSED">PAUSED (305)</div>
+        <div class="state" id="PREPARING">PREPARING (340)</div>
+        <div class="state" id="ERROR">ERROR (400)</div>
+        <div class="state" id="STOPPED">STOPPED (402)</div>
+        <div class="state" id="LOCAL_CONTROL">LOCAL_CONTROL (403)</div>
+        <div class="state" id="LOCKED">LOCKED (404)</div>
+    </div>
+
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
+</body>
+</html>
+
+
+<script type="text/javascript" charset="utf-8">
+
+        const baseUrl = "http://127.0.0.1:50057";
+        const connectButton = document.getElementById('connectButton');
+        const disconnectButton = document.getElementById('disconnectButton');
+        const sendCommandButton = document.getElementById('sendCommandButton');
+        const commandInput = document.getElementById('commandInput');
+        const statusButton = document.getElementById('statusButton');
+        const loadButton = document.getElementById('loadButton');
+        const unloadButton = document.getElementById('unloadButton');
+        const infoButton = document.getElementById('infoButton');
+        const outputArea = document.getElementById('outputArea');
+        var socketClientId = localStorage.getItem('socketClientId');
+
+        var socket = io.connect(baseUrl, {
+            query: {clientId: socketClientId}
+        });
+
+        $(document).ready(function() {
+            socket.on('connect', function() {
+                var clientId = socket.id;
+                console.log('Connected to server ');
+                if(!socketClientId) {
+                    console.log("Neue Socket.IO-Client ID erstellt: " + clientId);
+                    localStorage.setItem('socketClientId', clientId);
+                } else {
+                    console.log("Aus local storage vorhandene Socket.IO-Client ID wurde verwendet: " + clientId);
+                }
+                disconnectButton.disabled = true;
+                commandInput.disabled = true;
+                sendCommandButton.disabled = true;
+                statusButton.disabled = true;
+                loadButton.disabled = true;
+                unloadButton.disabled = true;
+                infoButton.disabled =   true;
+                connectButton.disabled = false;
+            });
+
+
+            socket.on('update_text', function(data) {
+                console.log(`${data.text}`);
+                outputArea.value += `${data.text}` + '\n';
+
+                if (data.text.includes("Disconnect") || data.text.includes("Disconnect") || data.text.includes("s02"))
+                {
+                    disconnectButton.disabled = true;
+                    commandInput.disabled = true;
+                    sendCommandButton.disabled = true;
+                    statusButton.disabled = true;
+                    loadButton.disabled = true;
+                    unloadButton.disabled = true;
+                    infoButton.disabled =   true;
+                    connectButton.disabled = false;
+
+                }
+                receiveMessageFromBackend(data.text);
+                if (data.text.includes("reply storage:status"))
+                {
+                    receiveMessageForSecondStateMachine(data.text); // Hier wird der anfängliche Zustand festgelegt
+                }
+
+            });
+
+            $('#connectButton').click(function() {
+                console.log(`button connect to Server clicked`);
+                socket.emit('connect_to_server', {who: 'WEB UI'});
+
+                disconnectButton.disabled = false;
+                commandInput.disabled = false;
+                sendCommandButton.disabled = false;
+                statusButton.disabled = false;
+                loadButton.disabled = false;
+                unloadButton.disabled = false;
+                infoButton.disabled = false;
+                connectButton.disabled = true;
+            });
+
+            $('#disconnectButton').click(function() {
+                console.log(`button disconnect from Server clicked.`);
+                socket.emit('disconnect_from_server', {who: 'WEB UI'});
+
+                disconnectButton.disabled = true;
+                commandInput.disabled = true;
+                sendCommandButton.disabled = true;
+                statusButton.disabled = true;
+                loadButton.disabled = true;
+                unloadButton.disabled = true;
+                infoButton.disabled =   true;
+                connectButton.disabled = false;
+            });
+
+            $('#sendCommandButton').click(function() {
+                console.log(`button send command to Sec Node Ur Server clicked.`);
+                const command = commandInput.value;
+                if (command.trim() === '') {
+                    logMessage('Please enter a command.');
+                    return;
+                }
+                socket.emit('send_command_to_sec_node_ur_server', {who: 'WEB UI', cmd: command});
+            });
+
+            $('#statusButton').click(function() {
+                console.log(`button status clicked.`);
+                const command = "read storage:status";
+                socket.emit('send_command_to_sec_node_ur_server', {who: 'WEB UI', cmd: command});
+            });
+
+            $('#loadButton').click(function() {
+                console.log(`button load clicked.`);
+                const command = "do storage:_load {\"color\": \"brown\", \"manufacturer\": \"Ritter\", \"mass\": 0.01667, \"sample_name\": \"Knusperkeks\", \"sample_id\": \"RS_KK_95674780\", \"sample_pos\": 10, \"substance\": \"Butter Biscuit\", \"substance_code\": \"0\" }";
+                socket.emit('send_command_to_sec_node_ur_server', {who: 'WEB UI', cmd: command});
+            });
+
+            $('#unloadButton').click(function() {
+                console.log(`button unload clicked.`);
+                const command = "do storage:_unload 10";
+                socket.emit('send_command_to_sec_node_ur_server', {who: 'WEB UI', cmd: command});
+            });
+
+            $('#infoButton').click(function() {
+                console.log(`button info from Sec Node Ur Server clicked.`);
+                const command = 'describe';
+                socket.emit('send_command_to_sec_node_ur_server', {who: 'WEB UI', cmd: command});
+            });
+
+        });
+
+        // JavaScript-Code zum Ändern der Hintergrundfarbe basierend auf Backend-Nachrichten
+        function changeStateColor(stateId, color) {
+            const stateElement = document.getElementById(stateId);
+            if (stateElement) {
+                stateElement.style.backgroundColor = color;
+            }
+        }
+
+        // Simulierter Nachrichtenempfang vom Backend und Zustandsänderungen
+        function receiveMessageFromBackend(message) {
+            changeStateColor('S01', 'white');
+            changeStateColor('S10', 'white');
+            changeStateColor('S11', 'white');
+            changeStateColor('S12', 'white');
+            changeStateColor('S13', 'white');
+            changeStateColor('S14', 'white');
+            changeStateColor('S15', 'white');
+            changeStateColor('S02', 'white');
+            if (message.includes("s01")){
+                changeStateColor('S01', 'green');
+            }
+            if (message.includes("s02")){
+                changeStateColor('S02', 'green');
+            }
+            if (message.includes("s10")){
+                changeStateColor('S10', 'green');
+                //todo: quick and dirty: later with db config sync
+                disconnectButton.disabled = false;
+                commandInput.disabled = false;
+                sendCommandButton.disabled = false;
+                statusButton.disabled = false;
+                loadButton.disabled = false;
+                unloadButton.disabled = false;
+                infoButton.disabled = false;
+                connectButton.disabled = true;
+            }
+            if (message.includes("s11")){
+                changeStateColor('S11', 'green');
+            }
+            if (message.includes("s12")){
+                changeStateColor('S12', 'green');
+            }
+            if (message.includes("s13")){
+                changeStateColor('S13', 'green');
+            }
+            if (message.includes("s14")){
+                changeStateColor('S14', 'green');
+            }
+            if (message.includes("s15")){
+                changeStateColor('S15', 'green');
+            }
+        }
+
+        // JavaScript-Code zum Ändern der Hintergrundfarbe basierend auf Backend-Nachrichten für die zweite Zustandsmaschine
+        function changeSecondStateColor(stateId, color) {
+            const stateElement = document.getElementById(stateId);
+            if (stateElement) {
+                stateElement.style.backgroundColor = color;
+            }
+        }
+
+        // Simulierter Nachrichtenempfang vom Backend und Aktualisierung des aktiven Zustands für die zweite Zustandsmaschine
+        function receiveMessageForSecondStateMachine(message) {
+            // Annahme: Die Nachricht enthält den Namen des aktiven Zustands für die zweite Zustandsmaschine
+            activeState = ""
+            const allStates = [
+                'DISABLED', 'IDLE', 'STANDBY', 'WARN', 'BUSY', 'PAUSED', 'PREPARING', 'ERROR', 'UNKNOWN', 'STOPPED', 'LOCAL_CONTROL', 'LOCKED', 'HOLDING_SAMPLE', 'MOUNTING', 'UNMOUNTING', 'LOADING', 'UNLOADING'
+            ];
+
+            // Zurücksetzen aller Zustände auf weiße Hintergrundfarbe
+            allStates.forEach(function (state) {
+                changeSecondStateColor(state, 'white');
+                if (message.toLowerCase().indexOf(state.toLowerCase()) !== -1)
+                {
+                    activeState = state
+                }
+            });
+            //
+            allStates.forEach(function (state) {
+                changeSecondStateColor(state, 'white');
+            });
+
+            // Aktiven Zustand grün markieren
+            if (allStates.includes(activeState)) {
+                changeSecondStateColor(activeState, 'green');
+            }
+        }
+
+        // Beispielaufruf zum Empfangen einer Nachricht für die zweite Zustandsmaschine
+        //receiveMessageForSecondStateMachine('UNKNOWN'); // Hier wird der anfängliche Zustand festgelegt
+
+        // Beispielaufruf zum Empfangen einer Nachricht vom Backend
+        receiveMessageFromBackend('s01');
+    </script>
